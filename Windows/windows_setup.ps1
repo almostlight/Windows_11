@@ -141,6 +141,7 @@ Run-Step "packages" {
         "Git.Git",
         "GitHub.cli",
         "GitHub.GitHubDesktop",
+		"Inkscape.Inkscape",
         "Oracle.JDK.21",
         "Oracle.JDK.26",
         "KeePassXCTeam.KeePassXC",
@@ -157,7 +158,6 @@ Run-Step "packages" {
         "Tailscale.Tailscale",
         "WinFsp.WinFsp",
         "vim.vim"
-
     ) | ForEach-Object { Install-Package $_ }
 }
 
