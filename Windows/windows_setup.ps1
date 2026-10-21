@@ -1,4 +1,7 @@
-# Yes, it is vibe-coded. I'm not learning Powershell.
+<# 
+Yes, it is vibe-coded. I'm not learning Powershell.
+#>
+
 param(
     [switch]$WhatIf
 )
@@ -180,65 +183,37 @@ Invoke-Step "home-config-and-startup" {
     )
 
     $shell = New-Object -ComObject WScript.Shell
-    $startupShortcut = $shell.CreateShortcut(
-        (Join-Path $startup "01-komorebi-and-autohotkey.lnk")
+    $shellApplication = New-Object -ComObject Shell.Application
+    $homeFolder = $shellApplication.Namespace($BasePath)
+    if (-not $homeFolder) {
+        throw "Could not access the user's home folder: $BasePath"
+    }
+    $homeFolder.Self.InvokeVerb("pintohome")
+    Write-SetupLog "Pinned the user's home folder to Quick Access"
+
+    $legacyShortcut = Join-Path $startup "01-komorebi-and-autohotkey.lnk"
+    if (Test-Path $legacyShortcut) {
+        Remove-Item $legacyShortcut -Force
+    }
+
+    $komorebiShortcut = $shell.CreateShortcut(
+        (Join-Path $startup "01-komorebi.lnk")
     )
-    $startupShortcut.TargetPath = $autoHotkey
-    $startupShortcut.Arguments = "`"$masterScript`" `"$komorebic`""
-    $startupShortcut.WorkingDirectory = Split-Path $masterScript
-    $startupShortcut.WindowStyle = 7
-    $startupShortcut.Save()
-    Write-SetupLog "Configured AutoHotkey to start Komorebi at user login"
-}
+    $komorebiShortcut.TargetPath = $komorebic
+    $komorebiShortcut.Arguments = "start --whkd --bar"
+    $komorebiShortcut.WorkingDirectory = $BasePath
+    $komorebiShortcut.WindowStyle = 7
+    $komorebiShortcut.Save()
 
-Invoke-Step "edge-blocker" {
-    $edgeUrl = "https://securedl.chip-downloads.de/downloads/41092168/EdgeBlock2.0.zip?cdr=4&cid=88734083&platform=chip&1779964617-1779972117-46994b-B-30a845019b172eaee80a888a40bb5b9f"
-    $out = Join-Path $Downloads "EdgeBlocker.zip"
-    $dir = Join-Path $Downloads "EdgeBlocker"
-
-    try {
-        Write-SetupLog "Downloading Edge Blocker from secured mirror"
-        Get-File $edgeUrl $out
-
-        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
-        Expand-Archive $out $dir -Force
-
-        $exe = Get-ChildItem $dir -Recurse -Filter "*EdgeBlock*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-        if ($exe) {
-            Write-SetupLog "Launching Edge Blocker: $($exe.FullName)"
-            Start-Process -FilePath $exe.FullName -WorkingDirectory $dir -Verb RunAs
-        } else {
-            Write-SetupLog "EdgeBlocker executable not found after extraction, opening download pages" "WARN"
-            Start-Process "https://www.sordum.org/9312/edge-blocker-v2-0/"
-            Start-Process "https://github.com/Sordum/Edge-Blocker/releases"
-        }
-    } catch {
-        Write-SetupLog "Edge Blocker automated install failed: $_" "WARN"
-        Start-Process "https://www.sordum.org/9312/edge-blocker-v2-0/"
-        Start-Process "https://github.com/Sordum/Edge-Blocker/releases"
-    }
-}
-
-Invoke-Step "repo" {
-    $Repo = Join-Path $BasePath "WindowsSetup"
-
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        throw "Git missing"
-    }
-
-    if (Test-Path $Repo) {
-        if (-not (Test-Path (Join-Path $Repo ".git"))) {
-            throw "Path exists but is not a Git repository: $Repo"
-        }
-        & git -C $Repo pull
-    } else {
-        & git clone https://github.com/almostlight/WindowsSetup $Repo
-    }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Git failed with exit code $LASTEXITCODE"
-    }
+    $autoHotkeyShortcut = $shell.CreateShortcut(
+        (Join-Path $startup "02-autohotkey.lnk")
+    )
+    $autoHotkeyShortcut.TargetPath = $autoHotkey
+    $autoHotkeyShortcut.Arguments = "`"$masterScript`""
+    $autoHotkeyShortcut.WorkingDirectory = Split-Path $masterScript
+    $autoHotkeyShortcut.WindowStyle = 7
+    $autoHotkeyShortcut.Save()
+    Write-SetupLog "Configured Komorebi and AutoHotkey to start at user login"
 }
 
 Invoke-Step "rdp" {
@@ -254,15 +229,17 @@ Invoke-Step "rdp" {
 
 Invoke-Step "ui-and-komorebi-hotkeys" {
     $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-    New-Item $p -Force | Out-Null
+    if (-not (Test-Path $p)) {
+        New-Item $p | Out-Null
+    }
     Set-ItemProperty -Path $p -Name "AppsUseLightTheme" -Value 0
     Set-ItemProperty -Path $p -Name "SystemUsesLightTheme" -Value 0
 
     $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-    New-Item $p -Force | Out-Null
-    Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 1
-
-    reg.exe add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve
+    if (-not (Test-Path $p)) {
+        New-Item $p | Out-Null
+    }
+    Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 0
 }
 
 Invoke-Step "keyboard" {
@@ -293,16 +270,32 @@ Invoke-Step "debloat" {
     Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\" -Name "OneDrive" -ErrorAction SilentlyContinue
 }
 
-# =========================
-# QUICK ACCESS PINNING
-# =========================
+Invoke-Step "edge-blocker" {
+    $edgeUrl = "https://securedl.chip-downloads.de/downloads/41092168/EdgeBlock2.0.zip?cdr=4&cid=88734083&platform=chip&1779964617-1779972117-46994b-B-30a845019b172eaee80a888a40bb5b9f"
+    $out = Join-Path $Downloads "EdgeBlocker.zip"
+    $dir = Join-Path $Downloads "EdgeBlocker"
 
-Invoke-Step "quickaccess" {
-    $shell = New-Object -ComObject Shell.Application
-    foreach ($p in @($Downloads, $BasePath)) {
-        if (Test-Path $p) {
-            ($shell.Namespace($p)).Self.InvokeVerb("pintohome")
+    try {
+        Write-SetupLog "Downloading Edge Blocker from secured mirror"
+        Get-File $edgeUrl $out
+
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+        Expand-Archive $out $dir -Force
+
+        $exe = Get-ChildItem $dir -Recurse -Filter "*EdgeBlock*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        if ($exe) {
+            Write-SetupLog "Launching Edge Blocker: $($exe.FullName)"
+            Start-Process -FilePath $exe.FullName -WorkingDirectory $dir -Verb RunAs
+        } else {
+            Write-SetupLog "EdgeBlocker executable not found after extraction, opening download pages" "WARN"
+            Start-Process "https://www.sordum.org/9312/edge-blocker-v2-0/"
+            Start-Process "https://github.com/Sordum/Edge-Blocker/releases"
         }
+    } catch {
+        Write-SetupLog "Edge Blocker automated install failed: $_" "WARN"
+        Start-Process "https://www.sordum.org/9312/edge-blocker-v2-0/"
+        Start-Process "https://github.com/Sordum/Edge-Blocker/releases"
     }
 }
 
