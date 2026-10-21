@@ -4,6 +4,7 @@
 super + o                 : taskkill /f /im whkd.exe; Start-Process whkd -WindowStyle hidden
 super + shift + o         : komorebic reload-configuration
 super + i                 : komorebic toggle-shortcuts
+super + e                 : explorer.exe
 
 # Window management
 super + q                 : komorebic close
