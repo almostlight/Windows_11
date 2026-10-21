@@ -2,11 +2,51 @@
 #SingleInstance
 #Warn All, Off
 
+StartKomorebi()
+
+; Turn capslk into another esc
 CapsLock::Send "{Esc}"
+; Toggle caps with shift+capslk
 +CapsLock::SetCapsLockState !GetKeyState("CapsLock", "T")
 
 #Enter::Run "wt.exe"
+#e::Run "explorer.exe"
+#v::Send "#v"
 #q::Send "!{F4}"
+<^<!Up::Send "{Volume_Mute}"
+<^<!Down::Send "{Media_Play_Pause}"
+<^<!Left::Send "{Media_Prev}"
+<^<!Right::Send "{Media_Next}"
+
+;======================
+; More complex scripts
+;======================
+
+StartKomorebi() {
+    komorebic := A_Args.Length > 0 ? A_Args[1] : "komorebic.exe"
+
+    try {
+        exitCode := RunWait(Format('"{}" start --whkd --bar', komorebic), , "Hide")
+    } catch as e {
+        MsgBox("Could not start Komorebi:`n`n" e.Message, "Komorebi startup", 0x40010)
+        ExitApp
+    }
+
+    if (exitCode != 0) {
+        MsgBox("Komorebi failed to start with exit code " exitCode ".", "Komorebi startup", 0x40010)
+        ExitApp
+    }
+
+    deadline := A_TickCount + 10000
+    while (!ProcessExist("komorebi.exe") && A_TickCount < deadline)
+        Sleep 250
+
+    if (!ProcessExist("komorebi.exe")) {
+        MsgBox("Komorebi did not become ready within 10 seconds.", "Komorebi startup", 0x40010)
+        ExitApp
+    }
+}
+
 ; Extract archive using 7-Zip CLI
 #+a::{
     try {
@@ -65,8 +105,3 @@ CapsLock::Send "{Esc}"
         MsgBox("Error: " e.Message, "Extract", 0x40010)
     }
 }
-
-<^<!Up::Send "{Volume_Mute}"
-<^<!Down::Send "{Media_Play_Pause}"
-<^<!Left::Send "{Media_Prev}"
-<^<!Right::Send "{Media_Next}"

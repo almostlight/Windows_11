@@ -129,27 +129,6 @@ function Install-SetupPackage($id) {
     }
 }
 
-function Get-LatestGitHubRelease {
-    param(
-        [string]$Repo,
-        [string]$AssetPattern
-    )
-
-    $api = "https://api.github.com/repos/$Repo/releases/latest"
-
-    $release = Invoke-RestMethod -Uri $api -Headers @{
-        "User-Agent" = "PowerShell"
-    }
-
-    $asset = $release.assets | Where-Object { $_.name -like $AssetPattern } | Select-Object -First 1
-
-    if (-not $asset) {
-        throw "No asset matching $AssetPattern in $Repo"
-    }
-
-    return $asset.browser_download_url
-}
-
 Invoke-Step "packages" {
     $packageList = Join-Path $env:TEMP "WindowsSetup-winget-packages.txt"
     Get-RawRepositoryFile "Windows/winget-packages.txt" $packageList
@@ -200,62 +179,16 @@ Invoke-Step "home-config-and-startup" {
         (Join-Path ${env:ProgramFiles} "komorebi\bin\komorebic.exe")
     )
 
-    $launcher = Join-Path $ScriptsPath "start-desktop.ps1"
-    $quote = {
-        param([string]$Value)
-        "'" + $Value.Replace("'", "''") + "'"
-    }
-    $launcherTemplate = @'
-$ErrorActionPreference = "Stop"
-$komorebic = __KOMOREBIC__
-$autoHotkey = __AUTOHOTKEY__
-$masterScript = __MASTER_SCRIPT__
-
-$komorebiProcess = Start-Process -FilePath $komorebic `
-    -ArgumentList "start --whkd --bar" `
-    -WorkingDirectory (Split-Path $komorebic) `
-    -WindowStyle Hidden `
-    -Wait `
-    -PassThru
-if ($komorebiProcess.ExitCode -ne 0) {
-    throw "Komorebi failed to start with exit code $($komorebiProcess.ExitCode)"
-}
-$deadline = (Get-Date).AddSeconds(10)
-while (-not (Get-Process -Name "komorebi" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Milliseconds 250
-}
-if (-not (Get-Process -Name "komorebi" -ErrorAction SilentlyContinue)) {
-    throw "Komorebi did not become ready within 10 seconds"
-}
-
-Start-Process -FilePath $autoHotkey `
-    -ArgumentList "`"$masterScript`"" `
-    -WorkingDirectory (Split-Path $masterScript) `
-    -WindowStyle Hidden
-'@
-    $launcherContent = $launcherTemplate `
-        -replace "__KOMOREBIC__", (& $quote $komorebic) `
-        -replace "__AUTOHOTKEY__", (& $quote $autoHotkey) `
-        -replace "__MASTER_SCRIPT__", (& $quote $masterScript)
-    Set-Content -Path $launcher -Value $launcherContent -Encoding UTF8
-
     $shell = New-Object -ComObject WScript.Shell
-    foreach ($oldShortcut in @("AutoHotkey master.lnk", "Komorebi.lnk")) {
-        Remove-Item (Join-Path $startup $oldShortcut) -Force -ErrorAction SilentlyContinue
-    }
-
-    $powershell = Find-Executable "powershell.exe" @(
-        (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
-    )
     $startupShortcut = $shell.CreateShortcut(
         (Join-Path $startup "01-komorebi-and-autohotkey.lnk")
     )
-    $startupShortcut.TargetPath = $powershell
-    $startupShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
-    $startupShortcut.WorkingDirectory = $ScriptsPath
+    $startupShortcut.TargetPath = $autoHotkey
+    $startupShortcut.Arguments = "`"$masterScript`" `"$komorebic`""
+    $startupShortcut.WorkingDirectory = Split-Path $masterScript
     $startupShortcut.WindowStyle = 7
     $startupShortcut.Save()
-    Write-SetupLog "Configured Komorebi to start before AutoHotkey at user login"
+    Write-SetupLog "Configured AutoHotkey to start Komorebi at user login"
 }
 
 Invoke-Step "edge-blocker" {
@@ -308,22 +241,6 @@ Invoke-Step "repo" {
     }
 }
 
-#Invoke-Step "ssh" {
-#    $capabilityName = "OpenSSH.Server~~~~0.0.1.0"
-#    $capability = Get-WindowsCapability -Online -Name $capabilityName
-#
-#    if ($capability.State -ne "Installed") {
-#        Add-WindowsCapability -Online -Name $capabilityName | Out-Null
-#    }
-#
-#    $service = Get-Service -Name "sshd" -ErrorAction Stop
-#    Set-Service -Name "sshd" -StartupType Automatic
-#
-#    if ($service.Status -ne "Running") {
-#        Start-Service -Name "sshd"
-#    }
-#}
-
 Invoke-Step "rdp" {
     Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
         -Name "fDenyTSConnections" -Value 0
@@ -343,7 +260,7 @@ Invoke-Step "ui-and-komorebi-hotkeys" {
 
     $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
     New-Item $p -Force | Out-Null
-    Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 0
+    Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 1
 
     reg.exe add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve
 }
@@ -374,49 +291,6 @@ Invoke-Step "debloat" {
     }
 
     Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\" -Name "OneDrive" -ErrorAction SilentlyContinue
-}
-
-# =========================
-# NVCLEANSTALL
-# =========================
-
-Invoke-Step "nvclean" {
-    $nvUrl = "https://securedl.chip-downloads.de/downloads/121468823/NVCleanstall_1.19.0.exe?cdr=4&cid=176735254&platform=chip&1779964955-1779972455-6c9997-B-933592b8e46cca0af302c6d4d04b9043.exe"
-    $path = Join-Path $Downloads "NVCleanstall_1.19.0.exe"
-
-    function Test-IsHtmlFile($p) {
-        try {
-            $bytes = [System.IO.File]::ReadAllBytes($p)
-            $len = [Math]::Min(512, $bytes.Length)
-            $s = [System.Text.Encoding]::ASCII.GetString($bytes, 0, $len)
-            if ($s -match '<!doctype' -or $s -match '<html') { return $true }
-        } catch {
-            return $false
-        }
-        return $false
-    }
-
-    try {
-        if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
-
-        Write-SetupLog "Downloading NVCleanstall from secured mirror"
-        Get-File $nvUrl $path
-
-        if (-not (Test-Path $path)) { throw "Download failed: $nvUrl" }
-
-        if (Test-IsHtmlFile $path) {
-            Write-SetupLog "Downloaded file appears to be HTML/redirect; removing and falling back" "WARN"
-            Remove-Item $path -Force -ErrorAction SilentlyContinue
-            throw "Downloaded file invalid (HTML)"
-        }
-
-        Write-SetupLog "Launching NVCleanstall: $path"
-        Start-Process -FilePath $path -WorkingDirectory $Downloads -Verb RunAs
-    } catch {
-        Write-SetupLog "NVCleanstall automated install failed: $_" "WARN"
-        Start-Process "https://sourceforge.net/projects/nvcleanstall/files/"
-        Start-Process "https://sourceforge.net/projects/nvcleanstall/files/latest/download"
-    }
 }
 
 # =========================

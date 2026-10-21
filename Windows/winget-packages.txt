@@ -47,6 +47,7 @@ REALiX.HWiNFO
 Rufus.Rufus
 OpenWhisperSystems.Signal
 Tailscale.Tailscale
+TechPowerUp.NVCleanstall
 CharlesMilette.TranslucentTB
 vim.vim
 wez.wezterm
