@@ -132,12 +132,12 @@ Invoke-Step "packages" {
         ForEach-Object { $_.Trim() } |
         Where-Object { $_ -and -not $_.StartsWith("#") }
 
-    $installAllRecommendedPackages = $true
+    $installAllRecommendedPackages = $false
     if (-not $WhatIf) {
-        $response = Read-Host "Install all recommended packages? [Y/n] (Choosing 'n' installs only strictly necessary packages)"
-        if ($response -match '^(n|no)$') {
-            $installAllRecommendedPackages = $false
-        } elseif ($response -and $response -notmatch '^(y|yes|)$') {
+        $response = Read-Host "Install all recommended packages? [y/N] (Choosing 'N' installs only strictly necessary packages)"
+        if ($response -match '^(y|yes)$') {
+            $installAllRecommendedPackages = $true
+        } elseif ($response -and $response -notmatch '^(n|no|)$') {
             Write-SetupLog "Unrecognized package installation choice: '$response'. Defaulting to install all recommended packages" "WARN"
         }
     }
