@@ -15,8 +15,13 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
     $elevatedScript = Join-Path $env:TEMP "windows-setup-$PID.ps1"
+    $localStartupScript = Join-Path $PSScriptRoot "home\scripts\windows-startup.ps1"
+    $elevatedStartupScript = Join-Path $env:TEMP "windows-setup-startup.ps1"
     if ($PSCommandPath -and (Test-Path $PSCommandPath -PathType Leaf)) {
         Copy-Item $PSCommandPath $elevatedScript -Force
+        if (Test-Path $localStartupScript -PathType Leaf) {
+            Copy-Item $localStartupScript $elevatedStartupScript -Force
+        }
     } else {
         Invoke-WebRequest $ScriptUrl -OutFile $elevatedScript -UseBasicParsing
     }
@@ -27,6 +32,7 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     if ($WhatIf) { $arguments += " -WhatIf" }
     $process = Start-Process $shell -ArgumentList $arguments -Verb RunAs -Wait -PassThru
     Remove-Item $elevatedScript -Force -ErrorAction SilentlyContinue
+    Remove-Item $elevatedStartupScript -Force -ErrorAction SilentlyContinue
     exit $process.ExitCode
 }
 
@@ -84,24 +90,6 @@ function Get-RawRepositoryFile($RelativePath, $Out) {
         $Out
 }
 
-function Find-Executable {
-    param(
-        [string]$Name,
-        [string[]]$FallbackPaths
-    )
-
-    $paths = @(
-        (Get-Command $Name -ErrorAction SilentlyContinue).Source
-        $FallbackPaths
-    ) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) }
-
-    if ($paths) {
-        return $paths | Select-Object -First 1
-    }
-
-    throw "$Name was not found"
-}
-
 # =========================
 # CORE SYSTEM SETUP BLOCKS
 # =========================
@@ -126,7 +114,7 @@ function Install-SetupPackage($id) {
     Write-SetupLog "Installing $id"
     & winget install -e --id $id --silent `
         --accept-package-agreements --accept-source-agreements `
-        --disable-interactivity
+        --disable-interactivit  y
     if ($LASTEXITCODE -ne 0) {
         throw "Winget failed for $id with exit code $LASTEXITCODE"
     }
@@ -150,37 +138,40 @@ Invoke-Step "home-config-and-startup" {
         ".config\whkdrc" = ".config\whkdrc"
         "scripts\autohotkey\loop_accept.ahk" = "scripts\autohotkey\loop_accept.ahk"
         "scripts\autohotkey\master.ahk" = "scripts\autohotkey\master.ahk"
+        "scripts\windows-startup.ps1" = "scripts\windows-startup.ps1"
     }
 
     foreach ($relativePath in $configFiles.Keys) {
         $target = Join-Path $sourceHome $configFiles[$relativePath]
         New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
-        Get-RawRepositoryFile "Windows/home/$relativePath" $target
+        $repositoryPath = $relativePath -replace "\\", "/"
+        if ($relativePath -eq "scripts\windows-startup.ps1" -and
+            (Test-Path (Join-Path $env:TEMP "windows-setup-startup.ps1"))) {
+            Copy-Item (Join-Path $env:TEMP "windows-setup-startup.ps1") $target -Force
+        } else {
+            Get-RawRepositoryFile "Windows/home/$repositoryPath" $target
+        }
+        if ($relativePath -eq ".config\whkdrc") {
+            (Get-Content $target -Raw) -replace "(?im)^super\b", "win" |
+                Set-Content $target -Encoding utf8
+        } elseif ($relativePath -eq "komorebi.json") {
+            (Get-Content $target -Raw) -replace '(?m)^\s*"app_specific_configuration_path":[^\r\n]*\r?\n', "" |
+                Set-Content $target -Encoding utf8
+        }
     }
 
     Get-ChildItem -Path $sourceHome -Force | Copy-Item -Destination $BasePath -Recurse -Force
 
-    $masterScript = Join-Path $BasePath "scripts\autohotkey\master.ahk"
-    if (-not (Test-Path $masterScript -PathType Leaf)) {
-        throw "Master AutoHotkey script was not deployed: $masterScript"
-    }
-
-    $startup = [Environment]::GetFolderPath("Startup")
+    $startup = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Startup"
     if (-not $startup) {
-        throw "Could not resolve the signed-in user's Startup folder"
+        throw "Could not resolve the machine-wide Startup folder"
     }
     New-Item -ItemType Directory -Force -Path $startup | Out-Null
 
-    $autoHotkey = Find-Executable "AutoHotkey.exe" @(
-        (Join-Path ${env:ProgramFiles} "AutoHotkey\v2\AutoHotkey.exe"),
-        (Join-Path ${env:ProgramFiles} "AutoHotkey\AutoHotkey.exe"),
-        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\v2\AutoHotkey.exe"),
-        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\AutoHotkey.exe")
-    )
-
-    $komorebic = Find-Executable "komorebic.exe" @(
-        (Join-Path ${env:ProgramFiles} "komorebi\bin\komorebic.exe")
-    )
+    $startupScript = Join-Path $BasePath "scripts\windows-startup.ps1"
+    if (-not (Test-Path $startupScript -PathType Leaf)) {
+        throw "Startup script was not deployed: $startupScript"
+    }
 
     $shell = New-Object -ComObject WScript.Shell
     $shellApplication = New-Object -ComObject Shell.Application
@@ -191,29 +182,15 @@ Invoke-Step "home-config-and-startup" {
     $homeFolder.Self.InvokeVerb("pintohome")
     Write-SetupLog "Pinned the user's home folder to Quick Access"
 
-    $legacyShortcut = Join-Path $startup "01-komorebi-and-autohotkey.lnk"
-    if (Test-Path $legacyShortcut) {
-        Remove-Item $legacyShortcut -Force
-    }
-
-    $komorebiShortcut = $shell.CreateShortcut(
-        (Join-Path $startup "01-komorebi.lnk")
+    $startupShortcut = $shell.CreateShortcut(
+        (Join-Path $startup "WindowsSetup-startup.lnk")
     )
-    $komorebiShortcut.TargetPath = $komorebic
-    $komorebiShortcut.Arguments = "start --whkd --bar"
-    $komorebiShortcut.WorkingDirectory = $BasePath
-    $komorebiShortcut.WindowStyle = 7
-    $komorebiShortcut.Save()
-
-    $autoHotkeyShortcut = $shell.CreateShortcut(
-        (Join-Path $startup "02-autohotkey.lnk")
-    )
-    $autoHotkeyShortcut.TargetPath = $autoHotkey
-    $autoHotkeyShortcut.Arguments = "`"$masterScript`""
-    $autoHotkeyShortcut.WorkingDirectory = Split-Path $masterScript
-    $autoHotkeyShortcut.WindowStyle = 7
-    $autoHotkeyShortcut.Save()
-    Write-SetupLog "Configured Komorebi and AutoHotkey to start at user login"
+    $startupShortcut.TargetPath = (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
+    $startupShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startupScript`""
+    $startupShortcut.WorkingDirectory = Split-Path $startupScript
+    $startupShortcut.WindowStyle = 7
+    $startupShortcut.Save()
+    Write-SetupLog "Configured one machine-wide startup launcher"
 }
 
 Invoke-Step "rdp" {

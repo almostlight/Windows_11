@@ -1,66 +1,66 @@
 .shell powershell
 
 # Reload whkd configuration
-LWIN + o                  : taskkill /f /im whkd.exe; Start-Process whkd -WindowStyle hidden
-LWIN + shift + o          : komorebic reload-configuration
-LWIN + i                  : komorebic toggle-shortcuts
-LWIN + shift + c          : komorebic stop; komorebic start --whkd --bar
+win + o                  : taskkill /f /im whkd.exe; Start-Process whkd -WindowStyle hidden
+win + shift + o          : komorebic reload-configuration
+win + i                  : komorebic toggle-shortcuts
+win + shift + c          : komorebic stop; komorebic start --whkd --bar
 
 # Window management
-LWIN + q                  : komorebic close
-LWIN + m                  : komorebic toggle-monocle
-LWIN + h                  : komorebic focus left
-LWIN + j                  : komorebic focus down
-LWIN + k                  : komorebic focus up
-LWIN + l                  : komorebic focus right
-LWIN + shift + h          : komorebic move left
-LWIN + shift + j          : komorebic move down
-LWIN + shift + k          : komorebic move up
-LWIN + shift + l          : komorebic move right
-LWIN + shift + return     : komorebic promote
-LWIN + shift + tab        : komorebic cycle-focus previous
-LWIN + tab                : komorebic cycle-focus next
+win + q                  : komorebic close
+win + m                  : komorebic toggle-monocle
+win + h                  : komorebic focus left
+win + j                  : komorebic focus down
+win + k                  : komorebic focus up
+win + l                  : komorebic focus right
+win + shift + h          : komorebic move left
+win + shift + j          : komorebic move down
+win + shift + k          : komorebic move up
+win + shift + l          : komorebic move right
+win + shift + return     : komorebic promote
+win + shift + tab        : komorebic cycle-focus previous
+win + tab                : komorebic cycle-focus next
 
 # Stack windows
-LWIN + ctrl + left        : komorebic stack left
-LWIN + ctrl + down        : komorebic stack down
-LWIN + ctrl + up          : komorebic stack up
-LWIN + ctrl + right       : komorebic stack right
-LWIN + ctrl + space       : komorebic unstack
-LWIN + ctrl + shift + h   : komorebic cycle-stack previous
-LWIN + ctrl + shift + l   : komorebic cycle-stack next
+win + ctrl + left        : komorebic stack left
+win + ctrl + down        : komorebic stack down
+win + ctrl + up          : komorebic stack up
+win + ctrl + right       : komorebic stack right
+win + ctrl + space       : komorebic unstack
+win + ctrl + shift + h   : komorebic cycle-stack previous
+win + ctrl + shift + l   : komorebic cycle-stack next
 
 # Resize
-LWIN + alt + h            : komorebic resize-axis horizontal decrease
-LWIN + alt + l            : komorebic resize-axis horizontal increase
-LWIN + alt + j            : komorebic resize-axis vertical decrease
-LWIN + alt + k            : komorebic resize-axis vertical increase
+win + alt + h            : komorebic resize-axis horizontal decrease
+win + alt + l            : komorebic resize-axis horizontal increase
+win + alt + j            : komorebic resize-axis vertical decrease
+win + alt + k            : komorebic resize-axis vertical increase
 
-LWIN + t                  : komorebic toggle-float
-LWIN + f                  : komorebic toggle-monocle
-LWIN + shift + r          : komorebic retile
-LWIN + p                  : komorebic toggle-pause
+win + t                  : komorebic toggle-float
+win + f                  : komorebic toggle-monocle
+win + shift + r          : komorebic retile
+win + p                  : komorebic toggle-pause
 
 # Layouts
-LWIN + x                  : komorebic flip-layout horizontal
-LWIN + y                  : komorebic flip-layout vertical
+win + x                  : komorebic flip-layout horizontal
+win + y                  : komorebic flip-layout vertical
 
 # Workspaces
-LWIN + 1                  : komorebic focus-workspace 0
-LWIN + 2                  : komorebic focus-workspace 1
-LWIN + 3                  : komorebic focus-workspace 2
-LWIN + 4                  : komorebic focus-workspace 3
-LWIN + 5                  : komorebic focus-workspace 4
-LWIN + 6                  : komorebic focus-workspace 5
-LWIN + 7                  : komorebic focus-workspace 6
-LWIN + 8                  : komorebic focus-workspace 7
-LWIN + 9                  : komorebic focus-workspace 8
-LWIN + shift + 1          : komorebic move-to-workspace 0
-LWIN + shift + 2          : komorebic move-to-workspace 1
-LWIN + shift + 3          : komorebic move-to-workspace 2
-LWIN + shift + 4          : komorebic move-to-workspace 3
-LWIN + shift + 5          : komorebic move-to-workspace 4
-LWIN + shift + 6          : komorebic move-to-workspace 5
-LWIN + shift + 7          : komorebic move-to-workspace 6
-LWIN + shift + 8          : komorebic move-to-workspace 7
-LWIN + shift + 9          : komorebic move-to-workspace 8
+win + 1                  : komorebic focus-workspace 0
+win + 2                  : komorebic focus-workspace 1
+win + 3                  : komorebic focus-workspace 2
+win + 4                  : komorebic focus-workspace 3
+win + 5                  : komorebic focus-workspace 4
+win + 6                  : komorebic focus-workspace 5
+win + 7                  : komorebic focus-workspace 6
+win + 8                  : komorebic focus-workspace 7
+win + 9                  : komorebic focus-workspace 8
+win + shift + 1          : komorebic move-to-workspace 0
+win + shift + 2          : komorebic move-to-workspace 1
+win + shift + 3          : komorebic move-to-workspace 2
+win + shift + 4          : komorebic move-to-workspace 3
+win + shift + 5          : komorebic move-to-workspace 4
+win + shift + 6          : komorebic move-to-workspace 5
+win + shift + 7          : komorebic move-to-workspace 6
+win + shift + 8          : komorebic move-to-workspace 7
+win + shift + 9          : komorebic move-to-workspace 8
