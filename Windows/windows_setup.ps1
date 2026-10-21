@@ -124,12 +124,33 @@ function Install-SetupPackage($id) {
 
 Invoke-Step "packages" {
     $packageList = Join-Path $env:TEMP "WindowsSetup-winget-packages.txt"
+    $strictlyNecessaryPackages = @("LGUG2Z.komorebi", "LGUG2Z.whkd", "AutoHotkey.AutoHotkey")
+
     Get-RawRepositoryFile "Windows/winget-packages.txt" $packageList
 
-    Get-Content $packageList |
+    $allRecommendedPackages = Get-Content $packageList |
         ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -and -not $_.StartsWith("#") } |
-        ForEach-Object { Install-SetupPackage $_ }
+        Where-Object { $_ -and -not $_.StartsWith("#") }
+
+    $installAllRecommendedPackages = $true
+    if (-not $WhatIf) {
+        $response = Read-Host "Install all recommended packages? [Y/n] (Choosing 'n' installs only strictly necessary packages)"
+        if ($response -match '^(n|no)$') {
+            $installAllRecommendedPackages = $false
+        } elseif ($response -and $response -notmatch '^(y|yes|)$') {
+            Write-SetupLog "Unrecognized package installation choice: '$response'. Defaulting to install all recommended packages" "WARN"
+        }
+    }
+
+    $packagesToInstall = if ($installAllRecommendedPackages) {
+        $allRecommendedPackages
+    } else {
+        $strictlyNecessaryPackages
+    }
+
+    foreach ($packageId in $packagesToInstall) {
+        Install-SetupPackage $packageId
+    }
 }
 
 Invoke-Step "home-config-and-startup" {
