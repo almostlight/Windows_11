@@ -15,7 +15,9 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
     $elevatedScript = Join-Path $env:TEMP "windows-setup-$PID.ps1"
-    $localStartupScript = Join-Path $PSScriptRoot "home\scripts\windows-startup.ps1"
+    $localStartupScript = if ($PSScriptRoot) {
+        Join-Path $PSScriptRoot "home\scripts\windows-startup.ps1"
+    }
     $elevatedStartupScript = Join-Path $env:TEMP "windows-setup-startup.ps1"
     if ($PSCommandPath -and (Test-Path $PSCommandPath -PathType Leaf)) {
         Copy-Item $PSCommandPath $elevatedScript -Force
@@ -114,7 +116,7 @@ function Install-SetupPackage($id) {
     Write-SetupLog "Installing $id"
     & winget install -e --id $id --silent `
         --accept-package-agreements --accept-source-agreements `
-        --disable-interactivit  y
+        --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
         throw "Winget failed for $id with exit code $LASTEXITCODE"
     }
