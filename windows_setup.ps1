@@ -132,6 +132,7 @@ function Get-LatestGitHubRelease {
 }
 
 Run-Step "packages" {
+<<<<<<< HEAD:Windows/windows_setup.ps1
     $packageList = Join-Path $env:TEMP "WindowsSetup-winget-packages.txt"
     Get-RawRepositoryFile "Windows/winget-packages.txt" $packageList
 
@@ -206,6 +207,35 @@ Run-Step "home-config-and-startup" {
     $komorebiShortcut.WindowStyle = 7
     $komorebiShortcut.Save()
     Write-Log "Configured Komorebi to start hidden with Windows"
+=======
+    @(
+        "7zip.7zip",
+        "AutoHotkey.AutoHotkey",
+	    "Bambulab.Bambustudio",
+        "Kitware.CMake",
+        "GIMP.GIMP",
+        "Git.Git",
+        "GitHub.cli",
+        "GitHub.GitHubDesktop",
+		"Inkscape.Inkscape",
+        "Oracle.JDK.21",
+        "Oracle.JDK.26",
+        "KeePassXCTeam.KeePassXC",
+        "Klocman.BulkCrapUninstaller",
+        "Microsoft.DotNet.DesktopRuntime.8",
+        "Microsoft.DotNet.DesktopRuntime.9",
+        "Microsoft.Office",
+        "Microsoft.PowerShell",
+        "Microsoft.PowerToys",
+        "Microsoft.VisualStudioCode",
+        "Mozilla.Firefox",
+        "Nextcloud.NextcloudDesktop",
+        "REALiX.HWiNFO",
+        "Tailscale.Tailscale",
+        "WinFsp.WinFsp",
+        "vim.vim"
+    ) | ForEach-Object { Install-Package $_ }
+>>>>>>> 94b73149a75713a9078543496af29a1509cba243:windows_setup.ps1
 }
 
 Run-Step "edge-blocker" {
