@@ -3,27 +3,39 @@ param(
     [switch]$WhatIf
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
+$ScriptUrl = "https://raw.githubusercontent.com/almostlight/WindowsSetup/main/Windows/windows_setup.ps1"
 
 # --- Self-elevation ---
 if (-not ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
-    Start-Process pwsh `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $(if ($WhatIf) {'-WhatIf'})" `
-        -Verb RunAs
-    exit
+    $elevatedScript = Join-Path $env:TEMP "windows-setup-$PID.ps1"
+    if ($PSCommandPath -and (Test-Path $PSCommandPath -PathType Leaf)) {
+        Copy-Item $PSCommandPath $elevatedScript -Force
+    } else {
+        Invoke-WebRequest $ScriptUrl -OutFile $elevatedScript -UseBasicParsing
+    }
+
+    $shell = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+    if (-not $shell) { $shell = (Get-Command powershell.exe).Source }
+    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$elevatedScript`""
+    if ($WhatIf) { $arguments += " -WhatIf" }
+    $process = Start-Process $shell -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    Remove-Item $elevatedScript -Force -ErrorAction SilentlyContinue
+    exit $process.ExitCode
 }
 
 # --- Core paths ---
 $date = Get-Date -Format "yyyy-MM-dd_HH_mm_ss"
-$BasePath = "C:\Users\Public\Automation"
+$BasePath = [Environment]::GetFolderPath("UserProfile")
 $Downloads = Join-Path $BasePath "Downloads"
-$LogPath = Join-Path $BasePath "setup.$date.log"
+$ScriptsPath = Join-Path $BasePath "scripts"
+$LogPath = Join-Path $ScriptsPath "setup.$date.log"
 $StatePath = Join-Path $BasePath "state.json"
 
-New-Item -ItemType Directory -Force -Path $BasePath, $Downloads | Out-Null
+New-Item -ItemType Directory -Force -Path $Downloads, $ScriptsPath | Out-Null
 
 # --- Logging ---
 function Write-Log {
@@ -43,7 +55,7 @@ $State = if (Test-Path $StatePath) {
 function Save-State { $State | ConvertTo-Json | Set-Content $StatePath }
 
 function Run-Step($Name, $ScriptBlock) {
-    if ($State[$Name]) {
+    if ($State[$Name] -eq $true) {
         Write-Log "SKIP: $Name"
         return
     }
@@ -57,23 +69,11 @@ function Run-Step($Name, $ScriptBlock) {
         $State[$Name] = $true
         Save-State
     } catch {
+        $State[$Name] = $false
+        Save-State
         Write-Log "FAILED: $Name - $_" "ERROR"
     }
 }
-
-# --- Mode selection ---
-if (-not $State.Mode) {
-    Write-Host "1) VM with GPU passthrough"
-    Write-Host "2) Bare-metal"
-
-    do { $choice = Read-Host "Enter 1 or 2" }
-    while ($choice -notin "1","2")
-
-    $State.Mode = if ($choice -eq "1") { "VM" } else { "BareMetal" }
-    Save-State
-}
-
-Write-Log "Mode: $($State.Mode)"
 
 # --- Download helper ---
 function Get-File($Url, $Out) {
@@ -91,6 +91,12 @@ function Get-File($Url, $Out) {
     throw "Download failed: $Url"
 }
 
+function Get-RawRepositoryFile($RelativePath, $Out) {
+    Get-File `
+        "https://raw.githubusercontent.com/almostlight/WindowsSetup/main/$RelativePath" `
+        $Out
+}
+
 # =========================
 # CORE SYSTEM SETUP BLOCKS
 # =========================
@@ -105,9 +111,20 @@ Run-Step "winget" {
 }
 
 function Install-Package($id) {
+    $installed = & winget list --exact --id $id `
+        --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+    if ($installed -match "(?im)\b$([regex]::Escape($id))\b") {
+        Write-Log "Skipping already installed package $id"
+        return
+    }
+
     Write-Log "Installing $id"
-    winget install -e --id $id --silent `
-        --accept-package-agreements --accept-source-agreements
+    & winget install -e --id $id --silent `
+        --accept-package-agreements --accept-source-agreements `
+        --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        throw "Winget failed for $id with exit code $LASTEXITCODE"
+    }
 }
 
 function Get-LatestGitHubRelease {
@@ -136,27 +153,126 @@ Run-Step "packages" {
         "7zip.7zip",
         "AutoHotkey.AutoHotkey",
 	    "Bambulab.Bambustudio",
+        # "ArduinoSA.IDE.stable",
+        "Arm.GnuArmEmbeddedToolchain",
+        "Autodesk.Fusion",
+        "Klocman.BulkCrapUninstaller",
         "Kitware.CMake",
+        # "Comfy.ComfyUI-Desktop",
+        "qarmin.czkawka.gui",
+        "Discord.Discord",
+        "Gyan.FFmpeg",
+        "FxSound.FxSound",
+        "GIMP.GIMP",
         "Git.Git",
         "GitHub.cli",
-        "GitHub.GitHubDesktop",
+        # "GitHub.GitHubDesktop",
+        "Inkscape.Inkscape",
         "Oracle.JDK.21",
         "Oracle.JDK.26",
-        "KeePassXCTeam.KeePassXC",
+        # "Jellyfin.JellyfinMediaPlayer",
+        # "KeePassXCTeam.KeePassXC",
+        "LGUG2Z.komorebi",
         "Microsoft.DotNet.DesktopRuntime.8",
         "Microsoft.DotNet.DesktopRuntime.9",
+        "Microsoft.Edge",
         "Microsoft.Office",
+        "Microsoft.OneDrive",
         "Microsoft.PowerShell",
         "Microsoft.PowerToys",
+        "Microsoft.Outlook",
+        "Microsoft.Teams",
         "Microsoft.VisualStudioCode",
+        "Microsoft.WSL",
+        # "Microsoft.WindowsTerminal",
         "Mozilla.Firefox",
         "Nextcloud.NextcloudDesktop",
+        "Ninja-build.Ninja",
+        # "NordSecurity.NordVPN",
+        "Notion.Notion",
+        "OpenVPNTechnologies.OpenVPN",
+        "qBittorrent.qBittorrent",
         "REALiX.HWiNFO",
+        "Rufus.Rufus",
+        "OpenWhisperSystems.Signal",
         "Tailscale.Tailscale",
-        "WinFsp.WinFsp",
-        "vim.vim"
+        "CharlesMilette.TranslucentTB",
+        "vim.vim",
+        "wez.wezterm",
+        "LGUG2Z.whkd"
 
     ) | ForEach-Object { Install-Package $_ }
+}
+
+Run-Step "home-config-and-startup" {
+    $sourceHome = Join-Path $env:TEMP "WindowsSetup-home"
+    $configFiles = @{
+        "komorebi.bar.json" = "komorebi.bar.json"
+        "komorebi.json" = "komorebi.json"
+        ".config\whkdrc" = ".config\whkdrc"
+        "scripts\autohotkey\loop_accept.ahk" = "scripts\autohotkey\loop_accept.ahk"
+        "scripts\autohotkey\master.ahk" = "scripts\autohotkey\master.ahk"
+    }
+
+    foreach ($relativePath in $configFiles.Keys) {
+        $target = Join-Path $sourceHome $configFiles[$relativePath]
+        New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+        Get-RawRepositoryFile "Windows/home/$relativePath" $target
+    }
+
+    Get-ChildItem -Path $sourceHome -Force | Copy-Item -Destination $BasePath -Recurse -Force
+
+    $masterScript = Join-Path $BasePath "scripts\autohotkey\master.ahk"
+    if (-not (Test-Path $masterScript -PathType Leaf)) {
+        throw "Master AutoHotkey script was not deployed: $masterScript"
+    }
+
+    $startup = [Environment]::GetFolderPath("Startup")
+    $autoHotkeyCandidates = @(
+        (Get-Command AutoHotkey.exe -ErrorAction SilentlyContinue).Source,
+        (Join-Path ${env:ProgramFiles} "AutoHotkey\v2\AutoHotkey.exe"),
+        (Join-Path ${env:ProgramFiles} "AutoHotkey\AutoHotkey.exe"),
+        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\v2\AutoHotkey.exe"),
+        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\AutoHotkey.exe")
+    ) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } |
+        Select-Object -First 1
+    if (-not $autoHotkeyCandidates) {
+        throw "AutoHotkey.exe was not found after package installation"
+    }
+
+    $shortcutPath = Join-Path $startup "AutoHotkey master.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $autoHotkeyCandidates
+    $shortcut.Arguments = "`"$masterScript`""
+    $shortcut.WorkingDirectory = Split-Path $masterScript
+    $shortcut.Save()
+    Write-Log "Configured AutoHotkey master script to start with Windows"
+
+    # Configure Komorebi to start automatically (hidden, independent from AutoHotkey)
+    $komorebiExe = Get-Command komorebi.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+    if (-not $komorebiExe) {
+        $komorebiPaths = @(
+            (Join-Path ${env:ProgramFiles} "komorebi\komorebi.exe"),
+            (Join-Path ${env:ProgramFiles} "LGUG2Z\komorebi\komorebi.exe"),
+            (Join-Path ${env:LOCALAPPDATA} "Programs\komorebi\komorebi.exe")
+        )
+        $komorebiExe = $komorebiPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
+
+    if ($komorebiExe) {
+        $vbsPath = Join-Path $startup "start_komorebi.vbs"
+        $vbsContent = @"
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run chr(34) & "$komorebiExe" & chr(34), 0
+"@
+        $vbsContent | Out-File $vbsPath -Encoding ASCII
+        Write-Log "Configured Komorebi to start automatically (hidden) via $vbsPath"
+    } else {
+        Write-Log "komorebi.exe not found, cannot configure auto-start" "WARN"
+    }
+
+    Write-Log "Komorebi will start automatically (hidden) and is also accessible via the AutoHotkey master script"
 }
 
 Run-Step "edge-blocker" {
@@ -196,19 +312,34 @@ Run-Step "repo" {
     }
 
     if (Test-Path $Repo) {
-        git -C $Repo pull
+        if (-not (Test-Path (Join-Path $Repo ".git"))) {
+            throw "Path exists but is not a Git repository: $Repo"
+        }
+        & git -C $Repo pull
     } else {
-        git clone https://github.com/almostlight/WindowsSetup $Repo
+        & git clone https://github.com/almostlight/WindowsSetup $Repo
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Git failed with exit code $LASTEXITCODE"
     }
 }
 
-# Run-Step "ssh" {
-#     if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
-#         Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
-#     }
-#     Set-Service sshd -StartupType Automatic
-#     Start-Service sshd
-# }
+#Run-Step "ssh" {
+#    $capabilityName = "OpenSSH.Server~~~~0.0.1.0"
+#    $capability = Get-WindowsCapability -Online -Name $capabilityName
+#
+#    if ($capability.State -ne "Installed") {
+#        Add-WindowsCapability -Online -Name $capabilityName | Out-Null
+#    }
+#
+#    $service = Get-Service -Name "sshd" -ErrorAction Stop
+#    Set-Service -Name "sshd" -StartupType Automatic
+#
+#    if ($service.Status -ne "Running") {
+#        Start-Service -Name "sshd"
+#    }
+#}
 
 Run-Step "rdp" {
     Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
@@ -218,84 +349,10 @@ Run-Step "rdp" {
 }
 
 # =========================
-# VM FEATURES
-# =========================
-
-if ($State.Mode -eq "VM") {
-
-    Run-Step "virtio" {
-        $file = Join-Path $Downloads "virtio.exe"
-        Get-File "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win-guest-tools.exe" $file
-        Start-Process $file -ArgumentList "/quiet" -Wait
-    }
-
-    Run-Step "lookingglass" {
-        $lgDir = Join-Path $Downloads "lg"
-
-        $existing = Get-ChildItem $lgDir -Recurse -Filter "looking-glass-host-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-        if ($existing) {
-            Write-Log "Looking Glass already extracted/available, skipping download" "SUCCESS"
-            Start-Process $existing.FullName -Wait
-            return
-        }
-
-        $zip = Join-Path $Downloads "lg.zip"
-        Get-File "https://looking-glass.io/artifact/stable/host" $zip
-
-        $dir = Join-Path $Downloads "lg"
-        Expand-Archive $zip $dir -Force
-
-        $exe = Get-ChildItem $dir -Recurse -Filter "looking-glass-host-setup.exe" | Select-Object -First 1
-
-        if ($exe) { Start-Process $exe.FullName -Wait }
-    }
-
-    Run-Step "vdd" {
-        $vddInstallPath = "C:\Program Files\VDD_Control"
-        $vddExe = Get-ChildItem $vddInstallPath -Recurse -Filter "VDD Control.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-        if ($vddExe) {
-            Write-Log "VDD already installed at $($vddExe.FullName), skipping download/install" "SUCCESS"
-            return
-        }
-
-        if (-not (Test-Path $vddInstallPath)) {
-            New-Item $vddInstallPath -ItemType Directory -Force | Out-Null
-        }
-
-        $vddUrl = Get-LatestGitHubRelease `
-            -Repo "VirtualDrivers/Virtual-Display-Driver" `
-            -AssetPattern "VDD.Control.*.zip"
-
-        $zip = Join-Path $env:TEMP "vdd.zip"
-        Invoke-WebRequest $vddUrl -OutFile $zip
-
-        Expand-Archive $zip $vddInstallPath -Force
-        Remove-Item $zip -Force
-
-        $exe = Get-ChildItem $vddInstallPath -Recurse -Filter "VDD Control.exe" | Select-Object -First 1
-
-        if ($exe) { Start-Process $exe.FullName }
-    }
-
-    Run-Step "autologon" {
-        $dir = Join-Path $Downloads "Autologon"
-        New-Item $dir -ItemType Directory -Force | Out-Null
-
-        Invoke-WebRequest "https://live.sysinternals.com/Autologon.exe" -OutFile "$dir\Autologon.exe"
-        Invoke-WebRequest "https://live.sysinternals.com/Autologon64.exe" -OutFile "$dir\Autologon64.exe"
-
-        Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" AutoAdminLogon "1"
-    }
-
-}
-
-# =========================
 # UI / SYSTEM TWEAKS
 # =========================
 
-Run-Step "ui" {
+Run-Step "ui-and-komorebi-hotkeys" {
     $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
     New-Item $p -Force | Out-Null
     Set-ItemProperty $p AppsUseLightTheme 0
@@ -319,8 +376,8 @@ Run-Step "winkey" {
     try {
         $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
         New-Item -Path $p -Force | Out-Null
-        Set-ItemProperty -Path $p -Name "NoWinKeys" -Value 0 -Type DWord -Force
-        Write-Log "Win key enabled"
+            Set-ItemProperty -Path $p -Name "NoWinKeys" -Value 1 -Type DWord -Force
+            Write-Log "Windows Win+number shortcuts disabled for Komorebi"
     } catch {
         Write-Log "Failed enabling Win key: $_" "ERROR"
     }
@@ -411,23 +468,27 @@ Run-Step "quickaccess" {
 }
 
 # =========================
-# CLEANUP
+# OPEN LOG AND CLEANUP
 # =========================
 
-Run-Step "cleanup" {
-    if ($State.Values -notcontains $false) {
-        Remove-Item $StatePath -Force
-        Write-Log "State removed"
+Run-Step "open log" {
+    $openLog = Read-Host "Would you like to open the log file? (y/N)"
+    if ($openLog -eq "Y" -or $openLog -eq "y") {
+        notepad $LogPath
     }
 }
 
-Run-Step "open log" { 
-    $openLog = Read-Host "nWould you like to open the log file? (y/N)" 
-    if ($openLog -eq 'Y' -or $openLog -eq 'y') { 
-        notepad $LogPath 
-    } 
+# Explorer restart
+$explorerProcesses = Get-Process -Name explorer -ErrorAction SilentlyContinue
+foreach ($process in $explorerProcesses) {
+    Stop-Process -Id $process.Id -Force
 }
 
-# Explorer restart
-Stop-Process explorer -Force
+$failedSteps = $State.GetEnumerator() |
+    Where-Object { $_.Value -eq $false }
+if (-not $WhatIf -and -not $failedSteps) {
+    Remove-Item $StatePath -Force -ErrorAction SilentlyContinue
+    Write-Log "State removed"
+}
+
 Write-Log "Provisioning complete"
