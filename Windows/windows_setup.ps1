@@ -196,25 +196,61 @@ Invoke-Step "home-config-and-startup" {
         (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\AutoHotkey.exe")
     )
 
-    $shell = New-Object -ComObject WScript.Shell
-    $autoHotkeyShortcut = $shell.CreateShortcut((Join-Path $startup "AutoHotkey master.lnk"))
-    $autoHotkeyShortcut.TargetPath = $autoHotkey
-    $autoHotkeyShortcut.Arguments = "`"$masterScript`""
-    $autoHotkeyShortcut.WorkingDirectory = Split-Path $masterScript
-    $autoHotkeyShortcut.Save()
-    Write-SetupLog "Configured AutoHotkey master script to start with Windows"
-
     $komorebic = Find-Executable "komorebic.exe" @(
         (Join-Path ${env:ProgramFiles} "komorebi\bin\komorebic.exe")
     )
 
-    $komorebiShortcut = $shell.CreateShortcut((Join-Path $startup "Komorebi.lnk"))
-    $komorebiShortcut.TargetPath = $komorebic
-    $komorebiShortcut.Arguments = "start --whkd --bar"
-    $komorebiShortcut.WorkingDirectory = Split-Path $komorebic
-    $komorebiShortcut.WindowStyle = 7
-    $komorebiShortcut.Save()
-    Write-SetupLog "Configured Komorebi and its bar to start for the signed-in user"
+    $launcher = Join-Path $ScriptsPath "start-desktop.ps1"
+    $quote = {
+        param([string]$Value)
+        "'" + $Value.Replace("'", "''") + "'"
+    }
+    $launcherTemplate = @'
+$ErrorActionPreference = "Stop"
+$komorebic = __KOMOREBIC__
+$autoHotkey = __AUTOHOTKEY__
+$masterScript = __MASTER_SCRIPT__
+
+& $komorebic start --whkd --bar
+if ($LASTEXITCODE -ne 0) {
+    throw "Komorebi failed to start with exit code $LASTEXITCODE"
+}
+$deadline = (Get-Date).AddSeconds(10)
+while (-not (Get-Process -Name "komorebi" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 250
+}
+if (-not (Get-Process -Name "komorebi" -ErrorAction SilentlyContinue)) {
+    throw "Komorebi did not become ready within 10 seconds"
+}
+
+Start-Process -FilePath $autoHotkey `
+    -ArgumentList "`"$masterScript`"" `
+    -WorkingDirectory (Split-Path $masterScript) `
+    -WindowStyle Hidden
+'@
+    $launcherContent = $launcherTemplate `
+        -replace "__KOMOREBIC__", (& $quote $komorebic) `
+        -replace "__AUTOHOTKEY__", (& $quote $autoHotkey) `
+        -replace "__MASTER_SCRIPT__", (& $quote $masterScript)
+    Set-Content -Path $launcher -Value $launcherContent -Encoding UTF8
+
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($oldShortcut in @("AutoHotkey master.lnk", "Komorebi.lnk")) {
+        Remove-Item (Join-Path $startup $oldShortcut) -Force -ErrorAction SilentlyContinue
+    }
+
+    $powershell = Find-Executable "powershell.exe" @(
+        (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
+    )
+    $startupShortcut = $shell.CreateShortcut(
+        (Join-Path $startup "01-komorebi-and-autohotkey.lnk")
+    )
+    $startupShortcut.TargetPath = $powershell
+    $startupShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
+    $startupShortcut.WorkingDirectory = $ScriptsPath
+    $startupShortcut.WindowStyle = 7
+    $startupShortcut.Save()
+    Write-SetupLog "Configured Komorebi to start before AutoHotkey at user login"
 }
 
 Invoke-Step "edge-blocker" {
