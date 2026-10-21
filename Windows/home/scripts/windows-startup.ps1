@@ -21,3 +21,6 @@ if (-not (Get-Process -Name "AutoHotkey*" -ErrorAction SilentlyContinue)) {
         -WorkingDirectory (Join-Path $BasePath "scripts\autohotkey") `
         -WindowStyle Hidden
 }
+
+# Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
+taskkill /f /im explorer.exe 

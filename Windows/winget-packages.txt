@@ -13,6 +13,7 @@ Kitware.CMake
 qarmin.czkawka.gui
 Discord.Discord
 Gyan.FFmpeg
+FilesCommunity.Files
 FxSound.FxSound
 GIMP.GIMP
 Git.Git
