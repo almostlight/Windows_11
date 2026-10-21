@@ -62,7 +62,9 @@
     {
       "Time": {
         "enable": true,
-        "format": "TwentyFourHour"
+        "format": {
+          "Custom": "%H:%M"
+        }
       }
     },
     {
