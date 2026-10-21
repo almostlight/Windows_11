@@ -1,6 +1,8 @@
-# Windows KVM Setup Script
+# Windows Setup Scripts
 
-[windows_setup.ps1](Windows/windows-setup.ps1) is a PowerShell script for automating Windows system setup, software installation, and configuration. It's intended for fresh Windows 11 installations in virtual machines with Nvidia GPU passthrough and meant to simplify the process of setting up GPU drivers, virtual display drivers, and Looking Glass for native-like graphics performance. It includes tons of other tweaks as well. 
+[windows_setup.ps1](Windows/windows_setup.ps1) is a PowerShell script for general Windows system setup, software installation, and configuration.
+[vm_setup.ps1](Windows/vm_setup.ps1) is a separate script for VM-only installation, including VirtIO, Looking Glass, VDD, and WinFsp.
+[winget-packages.txt](Windows/winget-packages.txt) contains the package IDs installed by [windows_setup.ps1](Windows/windows_setup.ps1). Lines beginning with `#` are disabled.
 [npp_powershell_installer.ps1](Windows/npp_powershell_installer.ps1) is a helper script to set up PowerShell syntax support in Notepad++. It is downloaded and called by [windows_setup.ps1](Windows/windows_setup.ps1).
 
 ##  Quick Start
@@ -13,14 +15,14 @@ Checkpoint-Computer -Description "Before Automation Script" -RestorePointType "M
 ### One-Line Installation
 
 ```powershell
-irm https://raw.githubusercontent.com/almostlight/Win11-Virt/main/windows_setup.ps1 | iex
+irm https://raw.githubusercontent.com/almostlight/WindowsSetup/main/Windows/windows_setup.ps1 | iex
 ```
 
 ### Manual Installation
 
 1. Download the script:
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/almostlight/Win11-Virt/main/windows_setup.ps1" -OutFile "windows_setup.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/almostlight/WindowsSetup/main/Windows/windows_setup.ps1" -OutFile "windows_setup.ps1"
 ```
 
 2. Review the script:
@@ -33,12 +35,18 @@ notepad windows_setup.ps1
 .\windows_setup.ps1
 ```
 
+For a VM with GPU passthrough, run the independent VM-specific script separately:
+
+```powershell
+irm https://raw.githubusercontent.com/almostlight/WindowsSetup/main/Windows/vm_setup.ps1 | iex
+```
+
 ##  What It Does
 
 ### Infrastructure Setup
 -  Automatic administrator privilege checking and elevation
--  Creates automation directory at `C:\Users\Public\Automation`
--  Logging to `C:\Users\Public\Automation\setup.log`
+-  Uses the current user's home directory for configuration
+-  Logging to `%USERPROFILE%\scripts\setup.<timestamp>.log`
 
 ### Package Managers & Core Tools
 - **Chocolatey** - Windows package manager
@@ -55,10 +63,11 @@ notepad windows_setup.ps1
 
 ### Monitoring & Utilities
 - **HWiNFO64** - Hardware monitoring and diagnostics
-- **Display Driver Uninstaller (DDU)** - Clean GPU driver removal
 - **Autologon** - Automatic login configuration (64-bit and 32-bit)
 
 ### Virtualization & Remote Gaming
+- Installed by [vm_setup.ps1](Windows/vm_setup.ps1), not by the general setup script:
+- **Display Driver Uninstaller (DDU)** - Clean GPU driver removal
 - **Looking Glass** - Low-latency KVM frame relay
 - **Virtual Display Driver** - Virtual monitor creation
 - **virtio-win-guest-tools** - VirtIO drivers for Windows guests
@@ -95,14 +104,14 @@ The script adds `C:\Users\Public\Automation` to Windows Defender exclusions. Thi
 
 ##  Logging
 
-All actions are logged to `C:\Users\Public\Automation\setup.log` with:
+All actions are logged to `%USERPROFILE%\scripts\setup.<timestamp>.log` with:
 - Timestamps for each action
 - Success/Error/Warning classifications
 - Detailed error messages for troubleshooting
 
 View the log:
 ```powershell
-notepad C:\Users\Public\Automation\setup.log
+notepad "$env:USERPROFILE\scripts\setup.<timestamp>.log"
 ```
 
 ##  What Requires Manual Action
@@ -121,7 +130,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 ```
 
 ### Installation failures
-- Check the log file at `C:\Users\Public\Automation\setup.log`
+- Check the log file at `%USERPROFILE%\scripts\setup.<timestamp>.log`
 - Ensure stable internet connection
 - Verify administrator privileges
 - Temporarily disable antivirus

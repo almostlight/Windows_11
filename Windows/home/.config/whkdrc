@@ -1,0 +1,65 @@
+.shell powershell
+
+# Reload whkd configuration
+super + o                 : taskkill /f /im whkd.exe; Start-Process whkd -WindowStyle hidden
+super + shift + o         : komorebic reload-configuration
+super + i                 : komorebic toggle-shortcuts
+
+# Window management
+super + q                 : komorebic close
+super + m                 : komorebic toggle-monocle
+super + h                 : komorebic focus left
+super + j                 : komorebic focus down
+super + k                 : komorebic focus up
+super + l                 : komorebic focus right
+super + shift + h         : komorebic move left
+super + shift + j         : komorebic move down
+super + shift + k         : komorebic move up
+super + shift + l         : komorebic move right
+super + shift + return    : komorebic promote
+super + shift + tab       : komorebic cycle-focus previous
+super + tab               : komorebic cycle-focus next
+
+# Stack windows
+super + ctrl + left       : komorebic stack left
+super + ctrl + down       : komorebic stack down
+super + ctrl + up         : komorebic stack up
+super + ctrl + right      : komorebic stack right
+super + ctrl + space      : komorebic unstack
+super + ctrl + shift + h  : komorebic cycle-stack previous
+super + ctrl + shift + l  : komorebic cycle-stack next
+
+# Resize
+super + alt + h           : komorebic resize-axis horizontal decrease
+super + alt + l           : komorebic resize-axis horizontal increase
+super + alt + j           : komorebic resize-axis vertical decrease
+super + alt + k           : komorebic resize-axis vertical increase
+
+super + t                 : komorebic toggle-float
+super + f                 : komorebic toggle-monocle
+super + shift + r         : komorebic retile
+super + p                 : komorebic toggle-pause
+
+# Layouts
+super + x                 : komorebic flip-layout horizontal
+super + y                 : komorebic flip-layout vertical
+
+# Workspaces
+super + 1                 : komorebic focus-workspace 0
+super + 2                 : komorebic focus-workspace 1
+super + 3                 : komorebic focus-workspace 2
+super + 4                 : komorebic focus-workspace 3
+super + 5                 : komorebic focus-workspace 4
+super + 6                 : komorebic focus-workspace 5
+super + 7                 : komorebic focus-workspace 6
+super + 8                 : komorebic focus-workspace 7
+super + 9                 : komorebic focus-workspace 8
+super + shift + 1         : komorebic move-to-workspace 0
+super + shift + 2         : komorebic move-to-workspace 1
+super + shift + 3         : komorebic move-to-workspace 2
+super + shift + 4         : komorebic move-to-workspace 3
+super + shift + 5         : komorebic move-to-workspace 4
+super + shift + 6         : komorebic move-to-workspace 5
+super + shift + 7         : komorebic move-to-workspace 6
+super + shift + 8         : komorebic move-to-workspace 7
+super + shift + 9         : komorebic move-to-workspace 8

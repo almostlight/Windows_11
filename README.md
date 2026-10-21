@@ -12,7 +12,7 @@ Thanks :)
 
 - **Issues**: [GitHub Issues](https://github.com/almostlight/powershell/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/almostlight/powershell/discussions)
-- **Log File**: Always check `C:\Users\Public\Automation\setup.log` first
+- **Log File**: Always check `%USERPROFILE%\scripts\setup.<timestamp>.log` first
 
 ##  License
 

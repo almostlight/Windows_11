@@ -33,7 +33,6 @@ $BasePath = [Environment]::GetFolderPath("UserProfile")
 $Downloads = Join-Path $BasePath "Downloads"
 $ScriptsPath = Join-Path $BasePath "scripts"
 $LogPath = Join-Path $ScriptsPath "setup.$date.log"
-$StatePath = Join-Path $BasePath "state.json"
 
 New-Item -ItemType Directory -Force -Path $Downloads, $ScriptsPath | Out-Null
 
@@ -47,30 +46,14 @@ function Write-Log {
 
 Write-Log "Starting provisioning"
 
-# --- State ---
-$State = if (Test-Path $StatePath) {
-    Get-Content $StatePath | ConvertFrom-Json -AsHashtable
-} else { @{} }
-
-function Save-State { $State | ConvertTo-Json | Set-Content $StatePath }
-
 function Run-Step($Name, $ScriptBlock) {
-    if ($State[$Name] -eq $true) {
-        Write-Log "SKIP: $Name"
-        return
-    }
-
     Write-Log "RUN: $Name"
 
     if ($WhatIf) { return }
 
     try {
         & $ScriptBlock
-        $State[$Name] = $true
-        Save-State
     } catch {
-        $State[$Name] = $false
-        Save-State
         Write-Log "FAILED: $Name - $_" "ERROR"
     }
 }
@@ -149,59 +132,13 @@ function Get-LatestGitHubRelease {
 }
 
 Run-Step "packages" {
-    @(
-        "7zip.7zip",
-        "AutoHotkey.AutoHotkey",
-	    "Bambulab.Bambustudio",
-        # "ArduinoSA.IDE.stable",
-        "Arm.GnuArmEmbeddedToolchain",
-        "Autodesk.Fusion",
-        "Klocman.BulkCrapUninstaller",
-        "Kitware.CMake",
-        # "Comfy.ComfyUI-Desktop",
-        "qarmin.czkawka.gui",
-        "Discord.Discord",
-        "Gyan.FFmpeg",
-        "FxSound.FxSound",
-        "GIMP.GIMP",
-        "Git.Git",
-        "GitHub.cli",
-        # "GitHub.GitHubDesktop",
-        "Inkscape.Inkscape",
-        "Oracle.JDK.21",
-        "Oracle.JDK.26",
-        # "Jellyfin.JellyfinMediaPlayer",
-        # "KeePassXCTeam.KeePassXC",
-        "LGUG2Z.komorebi",
-        "Microsoft.DotNet.DesktopRuntime.8",
-        "Microsoft.DotNet.DesktopRuntime.9",
-        "Microsoft.Edge",
-        "Microsoft.Office",
-        "Microsoft.OneDrive",
-        "Microsoft.PowerShell",
-        "Microsoft.PowerToys",
-        "Microsoft.Outlook",
-        "Microsoft.Teams",
-        "Microsoft.VisualStudioCode",
-        "Microsoft.WSL",
-        # "Microsoft.WindowsTerminal",
-        "Mozilla.Firefox",
-        "Nextcloud.NextcloudDesktop",
-        "Ninja-build.Ninja",
-        # "NordSecurity.NordVPN",
-        "Notion.Notion",
-        "OpenVPNTechnologies.OpenVPN",
-        "qBittorrent.qBittorrent",
-        "REALiX.HWiNFO",
-        "Rufus.Rufus",
-        "OpenWhisperSystems.Signal",
-        "Tailscale.Tailscale",
-        "CharlesMilette.TranslucentTB",
-        "vim.vim",
-        "wez.wezterm",
-        "LGUG2Z.whkd"
+    $packageList = Join-Path $env:TEMP "WindowsSetup-winget-packages.txt"
+    Get-RawRepositoryFile "Windows/winget-packages.txt" $packageList
 
-    ) | ForEach-Object { Install-Package $_ }
+    Get-Content $packageList |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -and -not $_.StartsWith("#") } |
+        ForEach-Object { Install-Package $_ }
 }
 
 Run-Step "home-config-and-startup" {
@@ -240,39 +177,35 @@ Run-Step "home-config-and-startup" {
         throw "AutoHotkey.exe was not found after package installation"
     }
 
-    $shortcutPath = Join-Path $startup "AutoHotkey master.lnk"
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $autoHotkeyCandidates
-    $shortcut.Arguments = "`"$masterScript`""
-    $shortcut.WorkingDirectory = Split-Path $masterScript
-    $shortcut.Save()
+    $autoHotkeyShortcut = $shell.CreateShortcut((Join-Path $startup "AutoHotkey master.lnk"))
+    $autoHotkeyShortcut.TargetPath = $autoHotkeyCandidates
+    $autoHotkeyShortcut.Arguments = "`"$masterScript`""
+    $autoHotkeyShortcut.WorkingDirectory = Split-Path $masterScript
+    $autoHotkeyShortcut.Save()
     Write-Log "Configured AutoHotkey master script to start with Windows"
 
-    # Configure Komorebi to start automatically (hidden, independent from AutoHotkey)
-    $komorebiExe = Get-Command komorebi.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
-    if (-not $komorebiExe) {
-        $komorebiPaths = @(
-            (Join-Path ${env:ProgramFiles} "komorebi\komorebi.exe"),
-            (Join-Path ${env:ProgramFiles} "LGUG2Z\komorebi\komorebi.exe"),
-            (Join-Path ${env:LOCALAPPDATA} "Programs\komorebi\komorebi.exe")
-        )
-        $komorebiExe = $komorebiPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    $komorebiCandidates = @(
+        (Get-Command komorebic.exe -ErrorAction SilentlyContinue).Source,
+        (Join-Path ${env:ProgramFiles} "komorebi\bin\komorebic.exe")
+    ) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } |
+        Select-Object -First 1
+    if (-not $komorebiCandidates) {
+        throw "komorebic.exe was not found after package installation"
     }
 
-    if ($komorebiExe) {
-        $vbsPath = Join-Path $startup "start_komorebi.vbs"
-        $vbsContent = @"
-Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run chr(34) & "$komorebiExe" & chr(34), 0
-"@
-        $vbsContent | Out-File $vbsPath -Encoding ASCII
-        Write-Log "Configured Komorebi to start automatically (hidden) via $vbsPath"
-    } else {
-        Write-Log "komorebi.exe not found, cannot configure auto-start" "WARN"
+    $hiddenShell = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
+    if (-not $hiddenShell) {
+        throw "powershell.exe was not found for hidden Komorebi startup"
     }
 
-    Write-Log "Komorebi will start automatically (hidden) and is also accessible via the AutoHotkey master script"
+    $komorebiShortcut = $shell.CreateShortcut((Join-Path $startup "Komorebi.lnk"))
+    $komorebiShortcut.TargetPath = $hiddenShell
+    $komorebiShortcut.Arguments = "-NoProfile -WindowStyle Hidden -Command `"Start-Process -FilePath '$komorebiCandidates' -ArgumentList 'start --whkd --bar' -WindowStyle Hidden -Wait`""
+    $komorebiShortcut.WorkingDirectory = Split-Path $komorebiCandidates
+    $komorebiShortcut.WindowStyle = 7
+    $komorebiShortcut.Save()
+    Write-Log "Configured Komorebi to start hidden with Windows"
 }
 
 Run-Step "edge-blocker" {
@@ -372,17 +305,6 @@ Run-Step "keyboard" {
     Set-WinUserLanguageList $lang -Force
 }
 
-Run-Step "winkey" {
-    try {
-        $p = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-        New-Item -Path $p -Force | Out-Null
-            Set-ItemProperty -Path $p -Name "NoWinKeys" -Value 1 -Type DWord -Force
-            Write-Log "Windows Win+number shortcuts disabled for Komorebi"
-    } catch {
-        Write-Log "Failed enabling Win key: $_" "ERROR"
-    }
-}
-
 # =========================
 # DEBLOAT
 # =========================
@@ -446,15 +368,6 @@ Run-Step "nvclean" {
 }
 
 # =========================
-# DDU
-# =========================
-
-Run-Step "ddu" {
-    $path = Join-Path $Downloads "DDU.exe"
-    Invoke-WebRequest "https://www.wagnardsoft.com/DDU/download/DDU%20v18.0.8.5.exe" -OutFile $path
-}
-
-# =========================
 # QUICK ACCESS PINNING
 # =========================
 
@@ -478,17 +391,39 @@ Run-Step "open log" {
     }
 }
 
-# Explorer restart
-$explorerProcesses = Get-Process -Name explorer -ErrorAction SilentlyContinue
-foreach ($process in $explorerProcesses) {
-    Stop-Process -Id $process.Id -Force
-}
+# =========================
+# RESTART DESKTOP PROCESSES
+# =========================
 
-$failedSteps = $State.GetEnumerator() |
-    Where-Object { $_.Value -eq $false }
-if (-not $WhatIf -and -not $failedSteps) {
-    Remove-Item $StatePath -Force -ErrorAction SilentlyContinue
-    Write-Log "State removed"
+if (-not $WhatIf) {
+    foreach ($name in @("komorebi", "komorebi-bar", "whkd", "AutoHotkey", "explorer")) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    }
+
+    $komorebic = Join-Path ${env:ProgramFiles} "komorebi\bin\komorebic.exe"
+    if (-not (Test-Path $komorebic -PathType Leaf)) {
+        throw "komorebic.exe was not found while restarting desktop processes"
+    }
+    Start-Process -FilePath $komorebic `
+        -ArgumentList "start --whkd --bar" -WindowStyle Hidden
+
+    $autoHotkey = @(
+        (Get-Command AutoHotkey.exe -ErrorAction SilentlyContinue).Source,
+        (Join-Path ${env:ProgramFiles} "AutoHotkey\v2\AutoHotkey.exe"),
+        (Join-Path ${env:ProgramFiles} "AutoHotkey\AutoHotkey.exe"),
+        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\v2\AutoHotkey.exe"),
+        (Join-Path ${env:LOCALAPPDATA} "Programs\AutoHotkey\AutoHotkey.exe")
+    ) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } |
+        Select-Object -First 1
+    if (-not $autoHotkey) {
+        throw "AutoHotkey.exe was not found while restarting desktop processes"
+    }
+    Start-Process -FilePath $autoHotkey `
+        -ArgumentList "`"$BasePath\scripts\autohotkey\master.ahk`"" `
+        -WorkingDirectory "$BasePath\scripts\autohotkey" -WindowStyle Hidden
+
+    Start-Process explorer.exe
 }
 
 Write-Log "Provisioning complete"
