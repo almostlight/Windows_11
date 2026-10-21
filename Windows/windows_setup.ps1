@@ -246,6 +246,28 @@ Invoke-Step "ui-and-komorebi-hotkeys" {
     Set-ItemProperty -Path $p -Name "HideIcons" -Value 1 -Type DWord
 }
 
+Invoke-Step "unpin-taskbar" {
+    $taskbandPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"
+    $taskband = Get-ItemProperty -Path $taskbandPath -ErrorAction SilentlyContinue
+    $hadPins = $null -ne $taskband
+    if ($hadPins) {
+        $propertyNames = $taskband.PSObject.Properties.Name
+        $hadPins = ($propertyNames -contains "Favorites") -or
+            ($propertyNames -contains "FavoritesResolve")
+    }
+
+    Remove-ItemProperty -Path $taskbandPath -Name @("Favorites", "FavoritesResolve") -ErrorAction SilentlyContinue;
+
+    if ($hadPins) {
+        Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.Id -Force }
+        Start-Process "explorer.exe"
+        Write-SetupLog "Removed all pinned taskbar items and restarted Explorer"
+    } else {
+        Write-SetupLog "No pinned taskbar items found"
+    }
+}
+
 Invoke-Step "keyboard" {
     $lang = New-WinUserLanguageList en-US
     $lang[0].InputMethodTips.Clear()
