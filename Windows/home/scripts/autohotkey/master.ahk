@@ -8,7 +8,8 @@ CapsLock::Send "{Esc}"
 +CapsLock::SetCapsLockState !GetKeyState("CapsLock", "T")
 
 #Enter::Run "wt.exe"
-#e::Run "files:"
+; #e::Run "files:"
+#e::Run "explorer.exe"
 #v::Send "#v"
 #q::Send "!{F4}"
 <^<!Up::Send "{Volume_Mute}"
