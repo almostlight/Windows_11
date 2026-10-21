@@ -185,7 +185,7 @@ Invoke-Step "home-config-and-startup" {
     Write-SetupLog "Pinned the user's home folder to Quick Access"
 
     $startupShortcut = $shell.CreateShortcut(
-        (Join-Path $startup "WindowsSetup-startup.lnk")
+        (Join-Path $startup "01-startup.lnk")
     )
     $startupShortcut.TargetPath = (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
     $startupShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startupScript`""
