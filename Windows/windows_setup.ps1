@@ -38,6 +38,9 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     exit $process.ExitCode
 }
 
+# --- Clear cache ---
+Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+
 # --- Core paths ---
 $date = Get-Date -Format "yyyy-MM-dd_HH_mm_ss"
 $BasePath = [Environment]::GetFolderPath("UserProfile")
@@ -302,8 +305,6 @@ Invoke-Step "edge-blocker" {
 # =========================
 # OPEN LOG AND CLEANUP
 # =========================
-
-Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 
 Invoke-Step "open log" {
     $openLog = Read-Host "Would you like to open the log file? (y/N)"
