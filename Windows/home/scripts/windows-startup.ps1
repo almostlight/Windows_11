@@ -22,5 +22,4 @@ if (-not (Get-Process -Name "AutoHotkey*" -ErrorAction SilentlyContinue)) {
         -WindowStyle Hidden
 }
 
-# Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
-taskkill /f /im explorer.exe 
+# taskkill /f /im explorer.exe      # this is buggy    
