@@ -211,9 +211,14 @@ $komorebic = __KOMOREBIC__
 $autoHotkey = __AUTOHOTKEY__
 $masterScript = __MASTER_SCRIPT__
 
-& $komorebic start --whkd --bar
-if ($LASTEXITCODE -ne 0) {
-    throw "Komorebi failed to start with exit code $LASTEXITCODE"
+$komorebiProcess = Start-Process -FilePath $komorebic `
+    -ArgumentList "start --whkd --bar" `
+    -WorkingDirectory (Split-Path $komorebic) `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($komorebiProcess.ExitCode -ne 0) {
+    throw "Komorebi failed to start with exit code $($komorebiProcess.ExitCode)"
 }
 $deadline = (Get-Date).AddSeconds(10)
 while (-not (Get-Process -Name "komorebi" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
