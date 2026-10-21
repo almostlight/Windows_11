@@ -243,6 +243,7 @@ Invoke-Step "ui-and-komorebi-hotkeys" {
         New-Item $p | Out-Null
     }
     Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 0
+    Set-ItemProperty -Path $p -Name "HideIcons" -Value 1 -Type DWord
 }
 
 Invoke-Step "keyboard" {
