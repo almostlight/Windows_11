@@ -282,6 +282,8 @@ Invoke-Step "edge-blocker" {
 # OPEN LOG AND CLEANUP
 # =========================
 
+Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+
 Invoke-Step "open log" {
     $openLog = Read-Host "Would you like to open the log file? (y/N)"
     if ($openLog -eq "Y" -or $openLog -eq "y") {
