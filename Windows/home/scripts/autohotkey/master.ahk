@@ -2,19 +2,11 @@
 #SingleInstance
 #Warn All, Off
 
-komorebic := "C:\Program Files\komorebi\bin\komorebic.exe"
-
 CapsLock::Send "{Esc}"
 +CapsLock::SetCapsLockState !GetKeyState("CapsLock", "T")
 
 #Enter::Run "wt.exe"
 #q::Send "!{F4}"
-; Restart komorebi using Mod + Shift + C
-#+c::{
-	RunWait('"' komorebic '" stop', , "Hide")
-	RunWait('"' komorebic '" start --whkd --bar', , "Hide")
-	Reload()
-}
 ; Extract archive using 7-Zip CLI
 #+a::{
     try {
