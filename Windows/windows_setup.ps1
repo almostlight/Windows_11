@@ -284,12 +284,6 @@ Invoke-Step "home-config-and-startup" {
 
     Get-ChildItem -Path $sourceHome -Force | Copy-Item -Destination $BasePath -Recurse -Force
 
-    $startup = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Startup"
-    if (-not (Test-Path $startup -PathType Container)) {
-        throw "Could not resolve the machine-wide Startup folder"
-    }
-    New-Item -ItemType Directory -Force -Path $startup | Out-Null
-
     $startupScript = Join-Path $BasePath "scripts\windows-startup.ps1"
     if (-not (Test-Path $startupScript -PathType Leaf)) {
         throw "Startup script was not deployed: $startupScript"
@@ -304,15 +298,31 @@ Invoke-Step "home-config-and-startup" {
     $homeFolder.Self.InvokeVerb("pintohome")
     Write-SetupLog "Pinned the user's home folder to Quick Access"
 
-    $startupShortcut = $shell.CreateShortcut(
-        (Join-Path $startup "01-startup.lnk")
-    )
-    $startupShortcut.TargetPath = (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe")
-    $startupShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startupScript`""
-    $startupShortcut.WorkingDirectory = Split-Path $startupScript
-    $startupShortcut.WindowStyle = 7
-    $startupShortcut.Save()
-    Write-SetupLog "Configured one machine-wide startup launcher"
+    $startupFolder = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Startup"
+    Remove-Item (Join-Path $startupFolder "01-startup.lnk") -Force -ErrorAction SilentlyContinue
+
+    $startupTaskName = "Graphical Environment Startup"
+    $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $taskAction = New-ScheduledTaskAction `
+        -Execute $powershellPath `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$startupScript`""
+    $taskTrigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+    $taskPrincipal = New-ScheduledTaskPrincipal `
+        -UserId "$env:USERDOMAIN\$env:USERNAME" `
+        -LogonType Interactive `
+        -RunLevel Highest
+    $taskSettings = New-ScheduledTaskSettingsSet `
+        -Priority 0 `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries
+    Register-ScheduledTask `
+        -TaskName $startupTaskName `
+        -Action $taskAction `
+        -Trigger $taskTrigger `
+        -Principal $taskPrincipal `
+        -Settings $taskSettings `
+        -Force | Out-Null
+    Write-SetupLog "Configured scheduled startup task"
 
     $localStartupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
     $configDir = Join-Path $BasePath ".config"
@@ -322,7 +332,8 @@ Invoke-Step "home-config-and-startup" {
     $localStartupShortcut.Save()
 
     $globalStartupShortcut = $shell.CreateShortcut((Join-Path $configDir "startup-global.lnk"))
-    $globalStartupShortcut.TargetPath = $startup
+    $globalStartupPath = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Startup"
+    $globalStartupShortcut.TargetPath = $globalStartupPath
     $globalStartupShortcut.Save()
 
     Write-SetupLog "Created shortcuts to local and global startup folders in .config"
