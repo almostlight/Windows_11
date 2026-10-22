@@ -1,5 +1,5 @@
 <# 
-Yes, it is vibe-coded. I'm not learning Powershell.
+Yes, it is (mostly) vibe-coded. I'm not learning Powershell.
 #>
 
 param(
@@ -8,9 +8,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ScriptUrl = "https://raw.githubusercontent.com/almostlight/WindowsSetup/main/Windows/windows_setup.ps1"
+$PromptTimeoutSeconds = 5
+
+if (-not ("WindowsSetup.ConsoleNative" -as [type])) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace WindowsSetup {
+    public static class ConsoleNative {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GetStdHandle(int handle);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetConsoleMode(IntPtr handle, out uint mode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetConsoleMode(IntPtr handle, uint mode);
+    }
+}
+'@
+}
 
 # --- Self-elevation ---
-if (-not ([Security.Principal.WindowsPrincipal] `
+if (-not $WhatIf -and -not ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
@@ -31,24 +52,34 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     $shell = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
     if (-not $shell) { $shell = (Get-Command powershell.exe).Source }
     $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$elevatedScript`""
-    if ($WhatIf) { $arguments += " -WhatIf" }
-    $process = Start-Process $shell -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    if (-not $shell) {
+        throw "Could not find PowerShell to run the elevated setup."
+    }
+
+    try {
+        $process = Start-Process $shell -ArgumentList $arguments -Verb RunAs -Wait -PassThru -ErrorAction Stop
+    } catch {
+        throw "Could not start the elevated setup. Approve the UAC prompt and try again. $($_.Exception.Message)"
+    }
     Remove-Item $elevatedScript -Force -ErrorAction SilentlyContinue
     Remove-Item $elevatedStartupScript -Force -ErrorAction SilentlyContinue
     exit $process.ExitCode
 }
 
 # --- Clear cache ---
-Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+if (-not $WhatIf) {
+    Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # --- Core paths ---
-$date = Get-Date -Format "yyyy-MM-dd_HH_mm_ss"
+$date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $BasePath = [Environment]::GetFolderPath("UserProfile")
 $Downloads = Join-Path $BasePath "Downloads"
 $ScriptsPath = Join-Path $BasePath "scripts"
-$LogPath = Join-Path $ScriptsPath "setup.$date.log"
+$LogPath = Join-Path $ScriptsPath "setup.log"
 
 New-Item -ItemType Directory -Force -Path $Downloads, $ScriptsPath | Out-Null
+Set-Content $LogPath "Provisioning started: $date"
 
 # --- Logging ---
 function Write-SetupLog {
@@ -59,6 +90,68 @@ function Write-SetupLog {
 }
 
 Write-SetupLog "Starting provisioning"
+
+function Read-TimedChoice {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Prompt,
+        [Parameter(Mandatory)]
+        [string]$Default
+    )
+
+    if ([Console]::IsInputRedirected) {
+        return $Default
+    }
+
+    $inputHandle = [WindowsSetup.ConsoleNative]::GetStdHandle(-10)
+    [uint32]$originalMode = 0
+    $restoreConsoleMode = $inputHandle -ne [IntPtr]::Zero -and
+        [WindowsSetup.ConsoleNative]::GetConsoleMode($inputHandle, [ref]$originalMode)
+    if ($restoreConsoleMode) {
+        $noQuickEditMode = [uint32](($originalMode -bor 0x0080) -band 0xFFFFFFBF)
+        if (-not [WindowsSetup.ConsoleNative]::SetConsoleMode($inputHandle, $noQuickEditMode)) {
+            $restoreConsoleMode = $false
+        }
+    }
+
+    try {
+        $deadline = [DateTime]::UtcNow.AddSeconds($PromptTimeoutSeconds)
+        $lastShown = -1
+
+        while ($true) {
+            $remaining = [Math]::Max(0, [Math]::Ceiling(
+                ($deadline - [DateTime]::UtcNow).TotalSeconds
+            ))
+            if ($remaining -ne $lastShown) {
+                [Console]::Write("`r$Prompt [$remaining] ")
+                $lastShown = $remaining
+            }
+
+            if ([Console]::KeyAvailable) {
+                $key = [Console]::ReadKey($true)
+                if ($key.Key -eq [ConsoleKey]::Enter) {
+                    [Console]::WriteLine("`r$Prompt [$remaining] $Default")
+                    return $Default
+                }
+                if (-not [char]::IsControl($key.KeyChar)) {
+                    [Console]::WriteLine("`r$Prompt [$remaining] $($key.KeyChar)")
+                    return [string]$key.KeyChar
+                }
+            }
+
+            if ([DateTime]::UtcNow -ge $deadline) {
+                [Console]::WriteLine("`r$Prompt [0] $Default")
+                return $Default
+            }
+
+            Start-Sleep -Milliseconds 100
+        }
+    } finally {
+        if ($restoreConsoleMode) {
+            [WindowsSetup.ConsoleNative]::SetConsoleMode($inputHandle, $originalMode) | Out-Null
+        }
+    }
+}
 
 function Invoke-Step($Name, $ScriptBlock) {
     Write-SetupLog "RUN: $Name"
@@ -109,15 +202,16 @@ Invoke-Step "winget" {
 }
 
 function Install-SetupPackage($id) {
-    $installed = & winget list --exact --id $id `
-        --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+    $installed = $null | & winget list --exact --id $id `
+        --accept-source-agreements --disable-interactivity 2>&1 |
+        Out-String
     if ($installed -match "(?im)\b$([regex]::Escape($id))\b") {
         Write-SetupLog "Skipping already installed package $id"
         return
     }
 
     Write-SetupLog "Installing $id"
-    & winget install -e --id $id --silent `
+    $null | & winget install -e --id $id --silent `
         --accept-package-agreements --accept-source-agreements `
         --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
@@ -136,13 +230,13 @@ Invoke-Step "packages" {
         Where-Object { $_ -and -not $_.StartsWith("#") }
 
     $installAllRecommendedPackages = $false
-    if (-not $WhatIf) {
-        $response = Read-Host "Install all recommended packages? [y/N] (Choosing 'N' installs only strictly necessary packages)"
-        if ($response -match '^(y|yes)$') {
-            $installAllRecommendedPackages = $true
-        } elseif ($response -and $response -notmatch '^(n|no|)$') {
-            Write-SetupLog "Unrecognized package installation choice: '$response'. Defaulting to install all recommended packages" "WARN"
-        }
+    $response = Read-TimedChoice `
+        "Install all recommended packages? [y/N] (Choosing 'N' installs only strictly necessary packages)" `
+        "n"
+    if ($response -eq "y") {
+        $installAllRecommendedPackages = $true
+    } elseif ($response -and $response -ne "n") {
+        Write-SetupLog "Unrecognized package installation choice: '$response'. Defaulting to strictly necessary packages" "WARN"
     }
 
     $packagesToInstall = if ($installAllRecommendedPackages) {
@@ -217,6 +311,19 @@ Invoke-Step "home-config-and-startup" {
     $startupShortcut.WindowStyle = 7
     $startupShortcut.Save()
     Write-SetupLog "Configured one machine-wide startup launcher"
+
+    $localStartupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
+    $configDir = Join-Path $BasePath ".config"
+
+    $localStartupShortcut = $shell.CreateShortcut((Join-Path $configDir "startup-local.lnk"))
+    $localStartupShortcut.TargetPath = $localStartupPath
+    $localStartupShortcut.Save()
+
+    $globalStartupShortcut = $shell.CreateShortcut((Join-Path $configDir "startup-global.lnk"))
+    $globalStartupShortcut.TargetPath = $startup
+    $globalStartupShortcut.Save()
+
+    Write-SetupLog "Created shortcuts to local and global startup folders in .config"
 }
 
 Invoke-Step "rdp" {
@@ -330,8 +437,9 @@ Invoke-Step "edge-blocker" {
 # =========================
 
 Invoke-Step "open log" {
-    $openLog = Read-Host "Would you like to open the log file? (y/N)"
-    if ($openLog -eq "Y" -or $openLog -eq "y") {
+    Clear-Host
+    $openLog = Read-TimedChoice "Would you like to open the log file? (Y/n)" "y"
+    if ($openLog -eq "y") {
         notepad $LogPath
     }
 }
