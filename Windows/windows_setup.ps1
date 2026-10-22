@@ -50,7 +50,9 @@ if (-not $WhatIf -and -not ([Security.Principal.WindowsPrincipal] `
     }
 
     $shell = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
-    if (-not $shell) { $shell = (Get-Command powershell.exe).Source }
+    if (-not $shell) {
+        $shell = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
+    }
     $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$elevatedScript`""
     if (-not $shell) {
         throw "Could not find PowerShell to run the elevated setup."
@@ -172,7 +174,7 @@ function Get-File($Url, $Out) {
 
     for ($i=0; $i -lt 3; $i++) {
         try {
-            Invoke-WebRequest $Url -OutFile $Out -TimeoutSec 60
+            Invoke-WebRequest $Url -OutFile $Out -TimeoutSec 60 -UseBasicParsing
             return
         } catch {
             Start-Sleep 2
@@ -283,7 +285,7 @@ Invoke-Step "home-config-and-startup" {
     Get-ChildItem -Path $sourceHome -Force | Copy-Item -Destination $BasePath -Recurse -Force
 
     $startup = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Startup"
-    if (-not $startup) {
+    if (-not (Test-Path $startup -PathType Container)) {
         throw "Could not resolve the machine-wide Startup folder"
     }
     New-Item -ItemType Directory -Force -Path $startup | Out-Null
@@ -351,6 +353,17 @@ Invoke-Step "ui-and-komorebi-hotkeys" {
     }
     Set-ItemProperty -Path $p -Name "TaskbarAl" -Value 0
     Set-ItemProperty -Path $p -Name "HideIcons" -Value 1 -Type DWord
+    Set-ItemProperty -Path $p -Name "TaskbarSi" -Value 0 -Type DWord
+
+    $stuckRectsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3"
+    $stuckRects = Get-ItemProperty -Path $stuckRectsPath -Name "Settings" -ErrorAction Stop
+    $taskbarSettings = [byte[]]$stuckRects.Settings
+    if ($taskbarSettings.Length -le 12) {
+        throw "Taskbar settings are incomplete: $stuckRectsPath"
+    }
+    $taskbarSettings[8] = 3
+    $taskbarSettings[12] = 0
+    Set-ItemProperty -Path $stuckRectsPath -Name "Settings" -Value $taskbarSettings -Type Binary
 }
 
 Invoke-Step "unpin-taskbar" {
@@ -365,13 +378,14 @@ Invoke-Step "unpin-taskbar" {
 
     Remove-ItemProperty -Path $taskbandPath -Name @("Favorites", "FavoritesResolve") -ErrorAction SilentlyContinue;
 
+    Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-Process -Id $_.Id -Force }
+    Start-Process "explorer.exe"
+
     if ($hadPins) {
-        Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
-            ForEach-Object { Stop-Process -Id $_.Id -Force }
-        Start-Process "explorer.exe"
         Write-SetupLog "Removed all pinned taskbar items and restarted Explorer"
     } else {
-        Write-SetupLog "No pinned taskbar items found"
+        Write-SetupLog "No pinned taskbar items found; restarted Explorer to apply taskbar settings"
     }
 }
 
@@ -442,6 +456,14 @@ Invoke-Step "open log" {
     if ($openLog -eq "y") {
         notepad $LogPath
     }
+}
+
+Invoke-Step "startup script" {
+    $startupScript = Join-Path $BasePath "scripts\windows-startup.ps1"
+    if (-not (Test-Path $startupScript -PathType Leaf)) {
+        throw "Startup script was not deployed: $startupScript"
+    }
+    & $startupScript
 }
 
 Write-SetupLog "Provisioning complete"

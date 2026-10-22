@@ -50,6 +50,7 @@ OpenWhisperSystems.Signal
 Tailscale.Tailscale
 TechPowerUp.NVCleanstall
 CharlesMilette.TranslucentTB
+VideoLAN.VLC
 vim.vim
-wez.wezterm
+# wez.wezterm
 LGUG2Z.whkd
