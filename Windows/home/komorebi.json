@@ -32,11 +32,11 @@
   { "kind": "Exe", "id": "MATLAB.exe" }
 ],
 "float_rules": [
-  { "kind": "Class", "id": "SunAwtFrame" },
   { "kind": "Title", "id": "Figure " },
   { "kind": "Exe", "id": "Spotify.exe" },
+  { "kind": "Class", "id": "SunAwtFrame" },
   { "kind": "Class", "id": "ApplicationFrameWindow" },
-  { "kind": "Exe", "id": "AutoHotkeyUX.exe" }
+  { "kind": "Class", "id": "AutoHotkeyGUI" }
 ],
 
   "monitors": [
