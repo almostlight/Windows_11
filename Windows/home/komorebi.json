@@ -36,7 +36,6 @@
   { "kind": "Title", "id": "Figure " },
   { "kind": "Exe", "id": "Spotify.exe" },
   { "kind": "Class", "id": "ApplicationFrameWindow" },
-  { "kind": "Class", "id": "CabinetWClass" },
   { "kind": "Exe", "id": "AutoHotkeyUX.exe" }
 ],
 
