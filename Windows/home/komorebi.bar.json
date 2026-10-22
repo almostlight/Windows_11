@@ -31,7 +31,7 @@
     },
     {
       "Media": {
-        "enable": false
+        "enable": true
       }
     },
     {
@@ -46,17 +46,9 @@
     },
     {
       "Network": {
-        "enable": false,
+        "enable": true,
         "show_activity": true,
         "show_total_activity": true
-      }
-    },
-    {
-      "Date": {
-        "enable": true,
-        "format": {
-          "Custom": "%d.%m"
-        }
       }
     },
     {
@@ -64,6 +56,14 @@
         "enable": true,
         "format": {
           "Custom": "%H:%M"
+        }
+      }
+    },
+    {
+      "Date": {
+        "enable": true,
+        "format": {
+          "Custom": "%d.%m"
         }
       }
     },
